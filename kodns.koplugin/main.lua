@@ -1,4 +1,5 @@
 local ButtonDialog = require("ui/widget/buttondialog")
+local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local TextViewer = require("ui/widget/textviewer")
 local UIManager = require("ui/uimanager")
@@ -103,6 +104,26 @@ function KoDNS:askProvider(touchmenu_instance)
     UIManager:show(dialog)
 end
 
+function KoDNS:checkForUpdates()
+    local out = self:run("update-check")
+    if not out:match("^Update available") then
+        UIManager:show(InfoMessage:new{ text = out })
+        return
+    end
+    UIManager:show(ConfirmBox:new{
+        text = out .. "\n\n" .. _("Download and install it now?"),
+        ok_text = _("Update"),
+        ok_callback = function()
+            local result = self:run("update")
+            if result:match("^Updated to") then
+                UIManager:askForRestart(result)
+            else
+                UIManager:show(InfoMessage:new{ text = result })
+            end
+        end,
+    })
+end
+
 function KoDNS:addToMainMenu(menu_items)
     local provider_items = {}
     for idx, p in ipairs(PROVIDERS) do
@@ -179,6 +200,11 @@ function KoDNS:addToMainMenu(menu_items)
                 text = _("Show log"),
                 keep_menu_open = true,
                 callback = function() self:viewer("log", _("KoDNS log")) end,
+            },
+            {
+                text = _("Check for updates"),
+                keep_menu_open = true,
+                callback = function() self:checkForUpdates() end,
             },
         },
     }

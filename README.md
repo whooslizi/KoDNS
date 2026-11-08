@@ -88,11 +88,11 @@ If the log shows certificate errors (`x509: certificate signed by unknown author
 
 1. Finds the latest release of AdguardTeam/dnsproxy and downloads `dnsproxy-linux-arm7-vX.Y.Z.tar.gz`.
 2. Checks that the binary is a 32-bit ARM executable and stops if it is not.
-3. Copies `kodns.koplugin`, puts the binary at `bin/dnsproxy` and this README inside, and zips it as `kodns.koplugin.zip`.
+3. Copies `kodns.koplugin`, puts the binary at `bin/dnsproxy`, this README and a `VERSION` file (the tag, or `dev-<commit>` for test builds) inside, and packs it as `kodns.koplugin.zip` (for people) and `kodns.koplugin.tar.gz` (for Check for updates).
 4. On every push it uploads the zip as a build artifact (for testing, sign-in required, deleted after 90 days).
-5. When a version tag is pushed, it publishes the zip as a GitHub Release, which is what the download link above points to.
+5. When a version tag is pushed, it publishes both files as a GitHub Release. The download link above and Check for updates both use the latest release.
 
-To publish a new version (for example after a new dnsproxy release):
+To publish a new version (for example after a new dnsproxy release), push a new tag. Every Kindle then sees it in Check for updates:
 
 ```
 git tag v1.0.1
@@ -111,6 +111,27 @@ Do not commit `bin/dnsproxy` to the repository; the build adds it.
 - **Run diagnostics**: runs every check and lists PASS, FAIL or SKIP for each.
 - **Benchmark providers**: TLS connect time to each provider in ms.
 - **Show log**: the last lines of the dnsproxy log.
+- **Check for updates**: asks GitHub for the latest KoDNS release. If there is a newer one, it asks before installing, then offers to restart KOReader. See Updating below.
+
+## Updating
+
+Tap **Check for updates** in the KoDNS menu. It needs wifi.
+
+- "Up to date (v1.0.1)": nothing to do.
+- "Update available: v1.0.2 (installed v1.0.1)": tap Update. KoDNS downloads the new release from https://github.com/whooslizi/KoDNS/releases, checks it, swaps the plugin folder and asks you to restart KOReader.
+- "installed unknown" or "installed dev-...": you installed KoDNS by hand or from a test build. Updating installs the latest release.
+
+Each release already contains the newest dnsproxy, so updating KoDNS also updates dnsproxy. If KoDNS is on while you update, it keeps running the old dnsproxy until you turn it off and on again (or reboot).
+
+If anything goes wrong (no connection, broken download), the installed plugin is left untouched and the popup says what failed.
+
+From the terminal:
+
+```
+sh /mnt/us/koreader/plugins/kodns.koplugin/kodns.sh version
+sh /mnt/us/koreader/plugins/kodns.koplugin/kodns.sh update-check
+sh /mnt/us/koreader/plugins/kodns.koplugin/kodns.sh update
+```
 
 ## Uninstall
 
