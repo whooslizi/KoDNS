@@ -86,6 +86,9 @@ bad_ip() {
     return 1
 }
 
+# True if there is a default route; checked before start so an offline start fails at once.
+online() { awk 'NR > 1 && $2 == "00000000" { f = 1 } END { exit !f }' /proc/net/route 2>/dev/null; }
+
 is_on() { [ -f "$PIDF" ] || mount_opts "$(target)" >/dev/null; }
 
 # Undo everything except the log.
@@ -120,6 +123,10 @@ cmd_start() {
     upstreams "$want" >/dev/null || [ "$want" = auto ] || { usage; exit 2; }
     if [ ! -x "$BIN" ]; then
         echo "FAILED: $BIN is missing or not executable"
+        exit 1
+    fi
+    if ! online; then
+        echo "FAILED: not connected to a network (Wi-Fi off?)"
         exit 1
     fi
     cleanup

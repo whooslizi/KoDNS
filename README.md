@@ -103,10 +103,15 @@ Do not commit `bin/dnsproxy` to the repository; the build adds it.
 
 ## Menu
 
+The KoDNS entry in the Network section has a checkbox that shows whether KoDNS is on, so you can see it without opening the menu.
+
+KoDNS only starts while you are connected to Wi-Fi. If you enable it offline, it tells you to connect first instead of hanging. If you turn Wi-Fi off in KOReader while KoDNS is on, KoDNS turns itself off.
+
 - **Enable KoDNS**: turns KoDNS on or off. When on, the label shows the provider in use, for example "Enable KoDNS (cloudflare)". If no provider is saved, or "Ask which provider every time" is on, you are asked to choose one first.
 - **Provider**: Auto, Cloudflare, Google, Quad9 or AdGuard. Changing it while KoDNS is on restarts KoDNS with the new provider.
 - **Ask which provider every time**: show the provider list every time you enable KoDNS.
-- **Start with KOReader**: start KoDNS 3 seconds after KOReader starts, once per session, if it is not already running. Uses Auto if no provider is saved.
+- **Start with KOReader**: start KoDNS 3 seconds after KOReader starts, once per session, if it is not already running and Wi-Fi is connected. Uses Auto if no provider is saved.
+- **Enable when Wi-Fi connects**: start KoDNS every time KOReader connects to Wi-Fi, with the saved provider (or Auto). Together with the auto-off on disconnect, KoDNS follows your Wi-Fi.
 - **Check**: shows which resolver really answers your lookups and who owns it. "Still using ISP DNS" means the ISP is still answering.
 - **Run diagnostics**: runs every check and lists PASS, FAIL or SKIP for each.
 - **Benchmark providers**: TLS connect time to each provider in ms.
