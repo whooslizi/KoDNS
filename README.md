@@ -34,13 +34,15 @@ Temp files: `/tmp/kodns.log`, `/tmp/kodns.pid`, `/tmp/kodns.provider`, `/tmp/kod
 
 Providers:
 
-| Name       | DoH endpoints                                                 |
-|------------|---------------------------------------------------------------|
-| auto       | fastest of cloudflare, google and quad9 (default)             |
-| cloudflare | https://1.1.1.1/dns-query, https://1.0.0.1/dns-query          |
-| google     | https://8.8.8.8/dns-query, https://8.8.4.4/dns-query          |
-| quad9      | https://9.9.9.9/dns-query, https://149.112.112.112/dns-query  |
-| adguard    | https://dns.adguard-dns.com/dns-query, bootstrap over DoH to 1.1.1.1 (blocks ads) |
+| Name       | DoH endpoints                                                 | Fallback          |
+|------------|---------------------------------------------------------------|-------------------|
+| auto       | fastest of cloudflare, google and quad9 (default)             | same as the provider it picks |
+| cloudflare | https://1.1.1.1/dns-query, https://1.0.0.1/dns-query          | Google 8.8.8.8    |
+| google     | https://8.8.8.8/dns-query, https://8.8.4.4/dns-query          | Cloudflare 1.1.1.1 |
+| quad9      | https://9.9.9.9/dns-query, https://149.112.112.112/dns-query  | Cloudflare 1.1.1.1 |
+| adguard    | https://dns.adguard-dns.com/dns-query, bootstrap over DoH to 1.1.1.1 (blocks ads) | Cloudflare 1.1.1.1 |
+
+If the chosen provider stops answering, dnsproxy switches to the fallback by itself, also over DoH. Lookups keep working, just through another company. With adguard, ads are not blocked while the fallback is in use.
 
 ## Install
 
@@ -86,11 +88,11 @@ If the log shows certificate errors (`x509: certificate signed by unknown author
 
 1. Finds the latest release of AdguardTeam/dnsproxy and downloads `dnsproxy-linux-arm7-vX.Y.Z.tar.gz`.
 2. Checks that the binary is a 32-bit ARM executable and stops if it is not.
-3. Copies `kodns.koplugin`, puts the binary at `bin/dnsproxy` and this README inside, and zips it as `kodns.koplugin.zip`.
+3. Copies `kodns.koplugin`, puts the binary at `bin/dnsproxy`, this README and a `VERSION` file (the tag, or `dev-<commit>` for test builds) inside, and packs it as `kodns.koplugin.zip` (for people) and `kodns.koplugin.tar.gz` (for Check for updates).
 4. On every push it uploads the zip as a build artifact (for testing, sign-in required, deleted after 90 days).
-5. When a version tag is pushed, it publishes the zip as a GitHub Release, which is what the download link above points to.
+5. When a version tag is pushed, it publishes both files as a GitHub Release. The download link above and Check for updates both use the latest release.
 
-To publish a new version (for example after a new dnsproxy release):
+To publish a new version (for example after a new dnsproxy release), push a new tag. Every Kindle then sees it in Check for updates:
 
 ```
 git tag v1.0.1
@@ -101,14 +103,40 @@ Do not commit `bin/dnsproxy` to the repository; the build adds it.
 
 ## Menu
 
+The KoDNS entry in the Network section has a checkbox that shows whether KoDNS is on, so you can see it without opening the menu.
+
+KoDNS only starts while you are connected to Wi-Fi. If you enable it offline, it tells you to connect first instead of hanging. If you turn Wi-Fi off in KOReader while KoDNS is on, KoDNS turns itself off.
+
 - **Enable KoDNS**: turns KoDNS on or off. When on, the label shows the provider in use, for example "Enable KoDNS (cloudflare)". If no provider is saved, or "Ask which provider every time" is on, you are asked to choose one first.
 - **Provider**: Auto, Cloudflare, Google, Quad9 or AdGuard. Changing it while KoDNS is on restarts KoDNS with the new provider.
 - **Ask which provider every time**: show the provider list every time you enable KoDNS.
-- **Start with KOReader**: start KoDNS 3 seconds after KOReader starts, once per session, if it is not already running. Uses Auto if no provider is saved.
+- **Start with KOReader**: start KoDNS 3 seconds after KOReader starts, once per session, if it is not already running and Wi-Fi is connected. Uses Auto if no provider is saved.
+- **Enable when Wi-Fi connects**: start KoDNS every time KOReader connects to Wi-Fi, with the saved provider (or Auto). Together with the auto-off on disconnect, KoDNS follows your Wi-Fi.
 - **Check**: shows which resolver really answers your lookups and who owns it. "Still using ISP DNS" means the ISP is still answering.
 - **Run diagnostics**: runs every check and lists PASS, FAIL or SKIP for each.
 - **Benchmark providers**: TLS connect time to each provider in ms.
 - **Show log**: the last lines of the dnsproxy log.
+- **Check for updates**: asks GitHub for the latest KoDNS release. If there is a newer one, it asks before installing, then offers to restart KOReader. See Updating below.
+
+## Updating
+
+Tap **Check for updates** in the KoDNS menu. It needs wifi.
+
+- "Up to date (v1.0.1)": nothing to do.
+- "Update available: v1.0.2 (installed v1.0.1)": tap Update. KoDNS downloads the new release from https://github.com/whooslizi/KoDNS/releases, checks it, swaps the plugin folder and asks you to restart KOReader.
+- "installed unknown" or "installed dev-...": you installed KoDNS by hand or from a test build. Updating installs the latest release.
+
+Each release already contains the newest dnsproxy, so updating KoDNS also updates dnsproxy. If KoDNS is on while you update, it keeps running the old dnsproxy until you turn it off and on again (or reboot).
+
+If anything goes wrong (no connection, broken download), the installed plugin is left untouched and the popup says what failed.
+
+From the terminal:
+
+```
+sh /mnt/us/koreader/plugins/kodns.koplugin/kodns.sh version
+sh /mnt/us/koreader/plugins/kodns.koplugin/kodns.sh update-check
+sh /mnt/us/koreader/plugins/kodns.koplugin/kodns.sh update
+```
 
 ## Uninstall
 

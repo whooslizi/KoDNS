@@ -41,7 +41,11 @@ jobs:
           cp README.md dist/kodns.koplugin/README.md
           cp /tmp/dl/linux-arm7/dnsproxy dist/kodns.koplugin/bin/dnsproxy
           chmod +x dist/kodns.koplugin/bin/dnsproxy
-          (cd dist && zip -r kodns.koplugin.zip kodns.koplugin)
+          # the in-app updater compares this with the latest release tag
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="dev-${GITHUB_SHA::7}"; fi
+          echo "$v" > dist/kodns.koplugin/VERSION
+          # zip for people, tar.gz for the in-app updater (BusyBox always has tar)
+          (cd dist && zip -r kodns.koplugin.zip kodns.koplugin && tar czf kodns.koplugin.tar.gz kodns.koplugin)
 
       - uses: actions/upload-artifact@v4
         with:

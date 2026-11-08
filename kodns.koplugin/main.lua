@@ -1,5 +1,7 @@
 local ButtonDialog = require("ui/widget/buttondialog")
+local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
+local NetworkMgr = require("ui/network/manager")
 local TextViewer = require("ui/widget/textviewer")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -33,12 +35,27 @@ function KoDNS:init()
     -- set on the class, not the instance, so it holds across file manager and reader
     if G_reader_settings:isTrue("kodns_autostart") and not KoDNS.autostarted then
         KoDNS.autostarted = true
-        UIManager:scheduleIn(3, function()
-            if not self:isRunning() then
-                self:start(G_reader_settings:readSetting("kodns_provider") or "auto")
-            end
-        end)
+        UIManager:scheduleIn(3, function() self:autoStart() end)
     end
+end
+
+-- Background start (KOReader launch or Wi-Fi connect): silent when offline or already on.
+function KoDNS:autoStart()
+    if self:isRunning() or not NetworkMgr:isConnected() then return end
+    self:start(G_reader_settings:readSetting("kodns_provider") or "auto", nil, true)
+end
+
+function KoDNS:onNetworkConnected()
+    if G_reader_settings:isTrue("kodns_wifi_autostart") then
+        -- give DHCP and the wifi scripts a moment to settle
+        UIManager:scheduleIn(2, function() self:autoStart() end)
+    end
+end
+
+function KoDNS:onNetworkDisconnected()
+    if not self:isRunning() then return end
+    self:run("stop")
+    UIManager:show(InfoMessage:new{ text = _("Wi-Fi disconnected, KoDNS turned off."), timeout = 3 })
 end
 
 -- No shell here: menu callbacks call this often.
@@ -77,8 +94,18 @@ function KoDNS:viewer(args, title)
     UIManager:show(TextViewer:new{ title = title, text = self:run(args) })
 end
 
-function KoDNS:start(provider, touchmenu_instance)
-    self:popup("start " .. provider)
+function KoDNS:start(provider, touchmenu_instance, background)
+    -- starting offline would block the UI on DNS timeouts
+    if not NetworkMgr:isConnected() then
+        if not background then
+            UIManager:show(InfoMessage:new{ text = _("Not connected to Wi-Fi. Connect first, then enable KoDNS.") })
+        end
+        return
+    end
+    UIManager:show(InfoMessage:new{
+        text = self:run("start " .. provider),
+        timeout = background and 3 or nil,
+    })
     if touchmenu_instance then touchmenu_instance:updateItems() end
 end
 
@@ -103,6 +130,26 @@ function KoDNS:askProvider(touchmenu_instance)
     UIManager:show(dialog)
 end
 
+function KoDNS:checkForUpdates()
+    local out = self:run("update-check")
+    if not out:match("^Update available") then
+        UIManager:show(InfoMessage:new{ text = out })
+        return
+    end
+    UIManager:show(ConfirmBox:new{
+        text = out .. "\n\n" .. _("Download and install it now?"),
+        ok_text = _("Update"),
+        ok_callback = function()
+            local result = self:run("update")
+            if result:match("^Updated to") then
+                UIManager:askForRestart(result)
+            else
+                UIManager:show(InfoMessage:new{ text = result })
+            end
+        end,
+    })
+end
+
 function KoDNS:addToMainMenu(menu_items)
     local provider_items = {}
     for idx, p in ipairs(PROVIDERS) do
@@ -122,6 +169,7 @@ function KoDNS:addToMainMenu(menu_items)
     menu_items.kodns = {
         text = _("KoDNS"),
         sorting_hint = "network",
+        checked_func = function() return self:isRunning() end,
         sub_item_table = {
             {
                 text_func = function()
@@ -158,6 +206,11 @@ function KoDNS:addToMainMenu(menu_items)
                 text = _("Start with KOReader"),
                 checked_func = function() return G_reader_settings:isTrue("kodns_autostart") end,
                 callback = function() G_reader_settings:flipNilOrFalse("kodns_autostart") end,
+            },
+            {
+                text = _("Enable when Wi-Fi connects"),
+                checked_func = function() return G_reader_settings:isTrue("kodns_wifi_autostart") end,
+                callback = function() G_reader_settings:flipNilOrFalse("kodns_wifi_autostart") end,
                 separator = true,
             },
             {
@@ -179,6 +232,11 @@ function KoDNS:addToMainMenu(menu_items)
                 text = _("Show log"),
                 keep_menu_open = true,
                 callback = function() self:viewer("log", _("KoDNS log")) end,
+            },
+            {
+                text = _("Check for updates"),
+                keep_menu_open = true,
+                callback = function() self:checkForUpdates() end,
             },
         },
     }

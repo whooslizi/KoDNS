@@ -11,17 +11,19 @@ RESOLV=/tmp/kodns-resolv.conf
 ISP='FPT|Viettel|VNPT'
 AUTO_LIST="cloudflare google quad9"
 ALL="cloudflare google quad9 adguard"
+REPO=whooslizi/KoDNS
 
 # Go needs CA roots for HTTPS; use a bundled file if the system has none.
 [ -f "$DIR/bin/cacert.pem" ] && export SSL_CERT_FILE="$DIR/bin/cacert.pem"
 
+# -f: DoH fallback from another company, used only when the main provider does not answer
 upstreams() {
     case $1 in
-        cloudflare) echo "-u https://1.1.1.1/dns-query -u https://1.0.0.1/dns-query" ;;
-        google) echo "-u https://8.8.8.8/dns-query -u https://8.8.4.4/dns-query" ;;
-        quad9) echo "-u https://9.9.9.9/dns-query -u https://149.112.112.112/dns-query" ;;
+        cloudflare) echo "-u https://1.1.1.1/dns-query -u https://1.0.0.1/dns-query -f https://8.8.8.8/dns-query" ;;
+        google) echo "-u https://8.8.8.8/dns-query -u https://8.8.4.4/dns-query -f https://1.1.1.1/dns-query" ;;
+        quad9) echo "-u https://9.9.9.9/dns-query -u https://149.112.112.112/dns-query -f https://1.1.1.1/dns-query" ;;
         # bootstrap over DoH as well: plain port 53 to 1.1.1.1 is hijacked by the ISP
-        adguard) echo "-u https://dns.adguard-dns.com/dns-query -b https://1.1.1.1/dns-query" ;;
+        adguard) echo "-u https://dns.adguard-dns.com/dns-query -b https://1.1.1.1/dns-query -f https://1.1.1.1/dns-query" ;;
         *) return 1 ;;
     esac
 }
@@ -47,14 +49,14 @@ tls_ms() {
 proxy_pid() {
     p=$(cat "$PIDF" 2>/dev/null)
     case $p in '' | *[!0-9]*) return 1 ;; esac
-    tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q dnsproxy || return 1
+    tr '\0' ' ' 2>/dev/null <"/proc/$p/cmdline" | grep -q dnsproxy || return 1
     echo "$p"
 }
 
 # Every process started from our binary, PID file or not.
 scan_pids() {
     for d in /proc/[0-9]*; do
-        c=$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null)
+        c=$(tr '\0' ' ' 2>/dev/null <"$d/cmdline")
         case $c in "$BIN "*) echo "${d#/proc/}" ;; esac
     done
 }
@@ -83,6 +85,9 @@ bad_ip() {
     esac
     return 1
 }
+
+# True if there is a default route; checked before start so an offline start fails at once.
+online() { awk 'NR > 1 && $2 == "00000000" { f = 1 } END { exit !f }' /proc/net/route 2>/dev/null; }
 
 is_on() { [ -f "$PIDF" ] || mount_opts "$(target)" >/dev/null; }
 
@@ -118,6 +123,10 @@ cmd_start() {
     upstreams "$want" >/dev/null || [ "$want" = auto ] || { usage; exit 2; }
     if [ ! -x "$BIN" ]; then
         echo "FAILED: $BIN is missing or not executable"
+        exit 1
+    fi
+    if ! online; then
+        echo "FAILED: not connected to a network (Wi-Fi off?)"
         exit 1
     fi
     cleanup
@@ -296,6 +305,51 @@ cmd_doctor() {
     [ "$F" -eq 0 ]
 }
 
+installed_version() { cat "$DIR/VERSION" 2>/dev/null || echo unknown; }
+
+# Tag of the latest GitHub release; refuses anything that is not a plain tag name.
+latest_version() {
+    t=$(curl -fsS -m 10 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null |
+        sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
+    case $t in '' | *[!A-Za-z0-9._-]*) return 1 ;; esac
+    echo "$t"
+}
+
+cmd_update_check() {
+    has_curl || { echo "curl not found, cannot check for updates"; return 1; }
+    cur=$(installed_version)
+    new=$(latest_version) || { echo "Could not get the latest version from GitHub"; return 1; }
+    if [ "$new" = "$cur" ]; then echo "Up to date ($cur)"; else echo "Update available: $new (installed $cur)"; fi
+}
+
+cmd_update() {
+    has_curl || { echo "FAILED: curl not found"; return 1; }
+    new=$(latest_version) || { echo "FAILED: could not get the latest version from GitHub"; return 1; }
+    if [ "$new" = "$(installed_version)" ]; then echo "Up to date ($new)"; return 0; fi
+    # stage next to the plugin so the final mv stays on the same filesystem
+    stage="$DIR.new"
+    rm -rf "$stage" "$DIR.old"
+    mkdir -p "$stage" || { echo "FAILED: cannot create $stage"; return 1; }
+    if ! curl -fsSL -m 180 -o "$stage/kodns.tar.gz" "https://github.com/$REPO/releases/download/$new/kodns.koplugin.tar.gz"; then
+        rm -rf "$stage"; echo "FAILED: download of $new failed"; return 1
+    fi
+    if ! tar xzf "$stage/kodns.tar.gz" -C "$stage"; then
+        rm -rf "$stage"; echo "FAILED: could not unpack the download"; return 1
+    fi
+    n="$stage/kodns.koplugin"
+    for f in _meta.lua main.lua kodns.sh bin/dnsproxy; do
+        [ -f "$n/$f" ] || { rm -rf "$stage"; echo "FAILED: download is missing $f"; return 1; }
+    done
+    sh -n "$n/kodns.sh" || { rm -rf "$stage"; echo "FAILED: downloaded kodns.sh is broken"; return 1; }
+    # a running dnsproxy keeps its old binary until KoDNS is restarted
+    if ! mv "$DIR" "$DIR.old"; then rm -rf "$stage"; echo "FAILED: cannot move the old plugin folder"; return 1; fi
+    if ! mv "$n" "$DIR"; then
+        mv "$DIR.old" "$DIR"; rm -rf "$stage"; echo "FAILED: cannot install the new plugin folder"; return 1
+    fi
+    rm -rf "$DIR.old" "$stage"
+    echo "Updated to $new. Restart KOReader to finish."
+}
+
 usage() {
     cat <<EOF
 Usage: sh kodns.sh <command>
@@ -306,6 +360,9 @@ Usage: sh kodns.sh <command>
   bench    TLS connect time to each provider
   log      last 15 lines of $LOG
   doctor   run every diagnostic check
+  version       show the installed version
+  update-check  check GitHub for a newer release
+  update        download and install the latest release
 EOF
 }
 
@@ -317,5 +374,8 @@ case $1 in
     bench) cmd_bench ;;
     log) cmd_log ;;
     doctor) cmd_doctor ;;
+    version) echo "KoDNS $(installed_version)" ;;
+    update-check) cmd_update_check ;;
+    update) cmd_update ;;
     *) usage; exit 2 ;;
 esac
