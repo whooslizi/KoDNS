@@ -47,14 +47,14 @@ tls_ms() {
 proxy_pid() {
     p=$(cat "$PIDF" 2>/dev/null)
     case $p in '' | *[!0-9]*) return 1 ;; esac
-    tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q dnsproxy || return 1
+    tr '\0' ' ' 2>/dev/null <"/proc/$p/cmdline" | grep -q dnsproxy || return 1
     echo "$p"
 }
 
 # Every process started from our binary, PID file or not.
 scan_pids() {
     for d in /proc/[0-9]*; do
-        c=$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null)
+        c=$(tr '\0' ' ' 2>/dev/null <"$d/cmdline")
         case $c in "$BIN "*) echo "${d#/proc/}" ;; esac
     done
 }
