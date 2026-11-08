@@ -1,0 +1,52 @@
+name: Build plugin
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download latest dnsproxy linux-arm7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo AdguardTeam/dnsproxy --json tagName -q .tagName)
+          echo "DNSPROXY_TAG=$tag" >> "$GITHUB_ENV"
+          gh release download "$tag" --repo AdguardTeam/dnsproxy \
+            --pattern "dnsproxy-linux-arm7-$tag.tar.gz" --dir /tmp/dl
+          tar xzf "/tmp/dl/dnsproxy-linux-arm7-$tag.tar.gz" -C /tmp/dl
+          # refuse anything that is not a 32-bit ARM binary
+          file /tmp/dl/linux-arm7/dnsproxy | grep -q 'ELF 32-bit LSB executable, ARM'
+
+      - name: Assemble plugin zip
+        run: |
+          mkdir dist
+          cp -r kodns.koplugin dist/
+          rm -f dist/kodns.koplugin/bin/.gitkeep
+          cp README.md dist/kodns.koplugin/README.md
+          cp /tmp/dl/linux-arm7/dnsproxy dist/kodns.koplugin/bin/dnsproxy
+          chmod +x dist/kodns.koplugin/bin/dnsproxy
+          (cd dist && zip -r kodns.koplugin.zip kodns.koplugin)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kodns.koplugin-dnsproxy-${{ env.DNSPROXY_TAG }}
+          path: dist/kodns.koplugin.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/kodns.koplugin.zip \
+            --title "KoDNS $GITHUB_REF_NAME" \
+            --notes "Includes dnsproxy $DNSPROXY_TAG (linux-arm7). Unzip and copy kodns.koplugin to koreader/plugins/ on the Kindle."
