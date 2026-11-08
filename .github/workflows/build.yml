@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,13 +44,30 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: kodns.koplugin-dnsproxy-${{ env.DNSPROXY_TAG }}
-          path: dist/kodns.koplugin.zip
+          path: dist/kodns.koplugin
 
-      - name: Publish release
+      - name: Publish release (tag)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/kodns.koplugin.zip \
-            --title "KoDNS $GITHUB_REF_NAME" \
-            --notes "Includes dnsproxy $DNSPROXY_TAG (linux-arm7). Unzip and copy kodns.koplugin to koreader/plugins/ on the Kindle."
+          notes="Includes dnsproxy $DNSPROXY_TAG (linux-arm7). Unzip and copy kodns.koplugin to koreader/plugins/ on the Kindle."
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/kodns.koplugin.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/kodns.koplugin.zip \
+              --title "KoDNS $GITHUB_REF_NAME" --notes "$notes"
+          fi
+
+      - name: Publish nightly (default branch)
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short=$(git rev-parse --short HEAD)
+          gh release delete nightly --cleanup-tag -y 2>/dev/null || true
+          gh release create nightly dist/kodns.koplugin.zip \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "KoDNS nightly ($short)" \
+            --notes "Automatic build from $short. Includes dnsproxy $DNSPROXY_TAG (linux-arm7). Unzip and copy kodns.koplugin to koreader/plugins/ on the Kindle."
