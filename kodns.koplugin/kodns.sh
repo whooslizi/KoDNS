@@ -15,13 +15,14 @@ ALL="cloudflare google quad9 adguard"
 # Go needs CA roots for HTTPS; use a bundled file if the system has none.
 [ -f "$DIR/bin/cacert.pem" ] && export SSL_CERT_FILE="$DIR/bin/cacert.pem"
 
+# -f: DoH fallback from another company, used only when the main provider does not answer
 upstreams() {
     case $1 in
-        cloudflare) echo "-u https://1.1.1.1/dns-query -u https://1.0.0.1/dns-query" ;;
-        google) echo "-u https://8.8.8.8/dns-query -u https://8.8.4.4/dns-query" ;;
-        quad9) echo "-u https://9.9.9.9/dns-query -u https://149.112.112.112/dns-query" ;;
+        cloudflare) echo "-u https://1.1.1.1/dns-query -u https://1.0.0.1/dns-query -f https://8.8.8.8/dns-query" ;;
+        google) echo "-u https://8.8.8.8/dns-query -u https://8.8.4.4/dns-query -f https://1.1.1.1/dns-query" ;;
+        quad9) echo "-u https://9.9.9.9/dns-query -u https://149.112.112.112/dns-query -f https://1.1.1.1/dns-query" ;;
         # bootstrap over DoH as well: plain port 53 to 1.1.1.1 is hijacked by the ISP
-        adguard) echo "-u https://dns.adguard-dns.com/dns-query -b https://1.1.1.1/dns-query" ;;
+        adguard) echo "-u https://dns.adguard-dns.com/dns-query -b https://1.1.1.1/dns-query -f https://1.1.1.1/dns-query" ;;
         *) return 1 ;;
     esac
 }

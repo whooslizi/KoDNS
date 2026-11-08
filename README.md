@@ -34,13 +34,15 @@ Temp files: `/tmp/kodns.log`, `/tmp/kodns.pid`, `/tmp/kodns.provider`, `/tmp/kod
 
 Providers:
 
-| Name       | DoH endpoints                                                 |
-|------------|---------------------------------------------------------------|
-| auto       | fastest of cloudflare, google and quad9 (default)             |
-| cloudflare | https://1.1.1.1/dns-query, https://1.0.0.1/dns-query          |
-| google     | https://8.8.8.8/dns-query, https://8.8.4.4/dns-query          |
-| quad9      | https://9.9.9.9/dns-query, https://149.112.112.112/dns-query  |
-| adguard    | https://dns.adguard-dns.com/dns-query, bootstrap over DoH to 1.1.1.1 (blocks ads) |
+| Name       | DoH endpoints                                                 | Fallback          |
+|------------|---------------------------------------------------------------|-------------------|
+| auto       | fastest of cloudflare, google and quad9 (default)             | same as the provider it picks |
+| cloudflare | https://1.1.1.1/dns-query, https://1.0.0.1/dns-query          | Google 8.8.8.8    |
+| google     | https://8.8.8.8/dns-query, https://8.8.4.4/dns-query          | Cloudflare 1.1.1.1 |
+| quad9      | https://9.9.9.9/dns-query, https://149.112.112.112/dns-query  | Cloudflare 1.1.1.1 |
+| adguard    | https://dns.adguard-dns.com/dns-query, bootstrap over DoH to 1.1.1.1 (blocks ads) | Cloudflare 1.1.1.1 |
+
+If the chosen provider stops answering, dnsproxy switches to the fallback by itself, also over DoH. Lookups keep working, just through another company. With adguard, ads are not blocked while the fallback is in use.
 
 ## Install
 
